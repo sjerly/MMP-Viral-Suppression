@@ -1,0 +1,20 @@
+{
+  "_captured_at": "2026-11-27T16:50:07.799981Z",
+  "_captured_run_id": "r_75e06467337f482884b1f2ac10c1d7f9",
+  "status": "ok",
+  "exit_code": 0,
+  "log_contains": [
+    "NOTE: Function eharsdate stored to work.function.eharsdate.",
+    "NOTE: The data set WORK.LABS2 has 10 observations and 9 variables.",
+    "NOTE: The data set WORK.LONG has 4 observations and 14 variables.",
+    "NOTE: The data set WORK.MMP3 has 5 observations and 5 variables."
+  ],
+  "log_does_not_contain": [
+    "ERROR:",
+    "[JENNER-ERROR"
+  ],
+  "diagnostics": {
+    "parse_warnings": [],
+    "runtime_warnings": []
+  }
+}

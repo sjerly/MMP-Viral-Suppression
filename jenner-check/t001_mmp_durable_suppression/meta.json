@@ -1,0 +1,7 @@
+{
+  "bundle": "t001_mmp_durable_suppression",
+  "source_file": "Code for MMP Data Call.sas",
+  "source_blob_sha": "51780b845082a371357c23a0eff03d3aa536e30c",
+  "source_commit": "34e88aa5d23e2b898c17745e2e0a354896131f87",
+  "notes": "Durable viral suppression program; the three libnames and the stateno link file are replaced by a small inline sample in autoexec.sas, the analysis steps are unchanged."
+}

@@ -1,0 +1,269 @@
+1          /* cap input rows for the captured run */
+2          options obs=100;
+NOTE: Option OBS changed to 100.
+3
+4          /* sample data standing in for the EHARS extracts and the MMP dataset */
+5          libname person ".";
+NOTE: Library PERSON assigned path=..
+6          libname document ".";
+NOTE: Library DOCUMENT assigned path=..
+7          libname mmp ".";
+NOTE: Library MMP assigned path=..
+8
+9          data link;
+10           length parid $6 stateno $8;
+11           input parid $ stateno $;
+12           datalines;
+19         ;
+20         run;
+NOTE: DATA WORK.LINK
+
+NOTE: Processing inline DATALINES (6 lines)
+
+NOTE: The data set WORK.LINK has 6 observations and 2 variables.
+NOTE: DATA elapsed:
+  wall  0.00 seconds
+  cpu   0.00 seconds
+21
+22         data mmp.mmp1521_union_wa;
+23           length parid $6;
+24           input parid $ idate :mmddyy10.;
+25           format idate mmddyy10.;
+26           datalines;
+33         ;
+34         run;
+NOTE: DATA MMP.MMP1521_UNION_WA
+
+NOTE: Processing inline DATALINES (6 lines)
+
+NOTE: The data set MMP.MMP1521_UNION_WA has 6 observations and 2 variables.
+NOTE: DATA elapsed:
+  wall  0.00 seconds
+  cpu   0.00 seconds
+35
+36         data person.person;
+37           length stateno $8 ehars_uid $6 hiv_aids_dx_dt $8;
+38           input stateno $ ehars_uid $ hiv_aids_dx_dt $;
+39           datalines;
+46         ;
+47         run;
+NOTE: DATA PERSON.PERSON
+
+NOTE: Processing inline DATALINES (6 lines)
+
+NOTE: The data set PERSON.PERSON has 6 observations and 3 variables.
+NOTE: DATA elapsed:
+  wall  0.00 seconds
+  cpu   0.00 seconds
+48
+49         data document.document;
+50           length ehars_uid $6 document_uid $6;
+51           input ehars_uid $ document_uid $;
+52           datalines;
+59         ;
+60         run;
+NOTE: DATA DOCUMENT.DOCUMENT
+
+NOTE: Processing inline DATALINES (6 lines)
+
+NOTE: The data set DOCUMENT.DOCUMENT has 6 observations and 2 variables.
+NOTE: DATA elapsed:
+  wall  0.00 seconds
+  cpu   0.00 seconds
+61
+62         data document.lab;
+63           length document_uid $6 lab_test_cd $6 result $8 result_interpretation $8 sample_dt $8;
+64           input document_uid $ lab_test_cd $ result $ sample_dt $;
+65           result_interpretation=' ';
+66           datalines;
+79         ;
+80         run;
+NOTE: DATA DOCUMENT.LAB
+
+NOTE: Processing inline DATALINES (12 lines)
+
+NOTE: The data set DOCUMENT.LAB has 12 observations and 5 variables.
+NOTE: DATA elapsed:
+  wall  0.00 seconds
+  cpu   0.00 seconds
+81
+82         /*Program to create variable indicating durable viral suppression at MMP interview.
+83         	Output dataset is named "mmp3" and contains variable "suppressed_long"
+84         	More information can be found here: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10285601/*/
+85
+86         /*Setting Up Libraries*/
+87         /*Libraries are assigned in autoexec.sas for this bundle*/
+88         options nofmterr;
+89
+90         /*Link file (parid, stateno) is created in autoexec.sas for this bundle*/
+91
+92         /*Name of MMP dataset*/
+93         %let mmp=mmp1521_union_wa;
+94
+95
+96         /**********************************THE BELOW SHOULD NOT NEED MODIFICIATION**********************************/
+97         /*Reading in MMP and Adding Stateno to Link to EHARS*/
+98         data mmp;
+99         set mmp.&mmp.;
+100        run;
+NOTE: DATA WORK.MMP
+
+
+NOTE: There were 6 observations read from the data set MMP.MMP1521_UNION_WA.
+NOTE: The data set WORK.MMP has 6 observations and 2 variables.
+NOTE: DATA elapsed:
+  wall  0.00 seconds
+  cpu   0.00 seconds
+101
+102        proc sql;
+103        create table mmp2 as
+104        select mmp.parid, link.stateno, mmp.idate
+105        from mmp inner join link
+106        on mmp.parid=strip(link.parid);
+107        quit;
+NOTE: PROC SQL 
+
+NOTE: Table WORK.MMP2 created.
+NOTE: PROC SQL statement used.
+108
+109        /*Defining a function to convert ehars dates into SAS Dates*/
+110        options cmplib=work.function;
+NOTE: Option CMPLIB changed to WORK.FUNCTION.
+111        proc fcmp outlib=work.function.eharsdate;
+112           function eharsdate(var_in $);
+113        		if substr(var_in,1,1)="." or var_in="" then var_out=.;
+114        		else if substr(var_in,5,1)="." and substr(var_in,7,1)="." then var_out=input("06/15/"||strip(substr(var_in,1,4)),mmddyy10.);
+115        		else if substr(var_in,5,1)="." then var_out=input("06/"||strip(substr(var_in,7,2))||"/"||strip(substr(var_in,1,4)),mmddyy10.);
+116        		else if substr(var_in,7,1)="." then var_out=input(strip(substr(var_in,5,2)||"/15/"||strip(substr(var_in,1,4))),mmddyy10.);
+117        		else var_out=input(strip(substr(var_in,5,2)||"/"||strip(substr(var_in,7,2))||"/"||strip(substr(var_in,1,4))),mmddyy10.);
+118           return(var_out);
+119           endsub;
+120        run;
+NOTE: PROC FCMP outlib=work.function.eharsdate
+
+NOTE: Function eharsdate stored to work.function.eharsdate.
+121
+122        /*Calculating durable viral suppression*/
+123        proc sql;
+124        create table doc as
+125        select person.stateno, mmp2.parid, document.document_uid, eharsdate(hiv_aids_dx_dt) as dx_dt, idate
+126        from person.person inner join mmp2
+127        on person.stateno=mmp2.stateno
+128        left join document.document
+129        on document.ehars_uid=person.ehars_uid;
+130
+131        create table labs as
+132        select doc.*, result, result_interpretation, eharsdate(sample_dt) as sample_dt
+133        from doc left join document.lab
+134        on doc.document_uid=lab.document_uid
+135        where lab_test_cd in ("EC-014" "EC-060"); /*Just viral load tests*/
+136        quit;
+NOTE: PROC SQL 
+
+NOTE: Table WORK.DOC created.
+NOTE: Table WORK.LABS created.
+NOTE: PROC SQL statement used.
+137
+138        proc sort data=labs;
+139        by stateno sample_dt result;
+140        run;
+NOTE: PROC SORT data=WORK.LABS
+
+NOTE: There were 11 observations read from the data set WORK.LABS.
+NOTE: The data set WORK.LABS has 11 observations and 8 variables.
+NOTE: PROC SORT statement used.
+141        proc sort data=labs nodupkey;	/*Deduplicating labs taken on the same date*/
+142        by stateno sample_dt;
+143        where input(result,8.0) ne .;
+144        run;
+NOTE: PROC SORT data=WORK.LABS
+
+NOTE: There were 10 observations read from the data set WORK.LABS.
+      WHERE INPUT(result, 8.0) not = .;
+NOTE: 0 observations with duplicate key values were deleted.
+NOTE: The data set WORK.LABS has 10 observations and 8 variables.
+NOTE: PROC SORT statement used.
+145
+146        /*Taking Labs representing the 2 year period centering on the interview date*/
+147        data labs2;
+148        set labs;
+149        resultn=input(result,8.0);
+150        if idate+365.25>=sample_dt>=idate-365.25;
+151        format sample_dt dx_dt mmddyy10.;
+152        run;
+NOTE: DATA WORK.LABS2
+
+
+NOTE: There were 10 observations read from the data set WORK.LABS.
+NOTE: The data set WORK.LABS2 has 10 observations and 9 variables.
+NOTE: DATA elapsed:
+  wall  0.00 seconds
+  cpu   0.00 seconds
+153
+154        /*Appying Suppression Rules*/
+155        data Long;
+156        set labs2;
+157        by stateno;
+158        retain eversupp losssup firstsupp;
+159        if first.stateno then do;
+160        	eversupp=0;
+161        	losssup=0;
+162        	if .<resultn<200 then firstsupp=1; else firstsupp=0;
+163        end;
+164
+165        if resultn lt 200 then eversupp=1;
+166        if eversupp=1 and resultn>=200 then losssup=1;
+167
+168
+169        if last.stateno then do;
+170        	if eversupp=0 then class=3;				/*People who were never suppressed*/
+171        	else if losssup=1 then class=2;			/*People who lost suppression during the time period (unstably suppressed)*/
+172        	else if firstsupp=0 then class=1;		/*People who became suppressed during the time period*/
+173        	else class=0;							/*People who were suppressed the whole time*/
+174        end;
+175
+176        if class in (0 1) then suppressed_long=1;
+177        else suppressed_long=0;
+178
+179        if last.stateno then output;
+180        run;
+NOTE: DATA WORK.LONG
+
+
+NOTE: There were 10 observations read from the data set WORK.LABS2.
+NOTE: The data set WORK.LONG has 4 observations and 14 variables.
+NOTE: DATA elapsed:
+  wall  0.00 seconds
+  cpu   0.00 seconds
+181
+182        /*Merging back onto original mmp dataset so that we include people who never got labs*/
+183        proc sort data=mmp2;
+184        by stateno;
+185        run;
+NOTE: PROC SORT data=WORK.MMP2
+
+NOTE: There were 5 observations read from the data set WORK.MMP2.
+NOTE: The data set WORK.MMP2 has 5 observations and 3 variables.
+NOTE: PROC SORT statement used.
+186
+187        data mmp3;
+188        merge mmp2 (in=a) long (keep=stateno class suppressed_long);
+189        by stateno;
+190        if a;
+191        if suppressed_long=. then do; class=3; suppressed_long=0; end;
+192        run;
+NOTE: DATA WORK.MMP3
+
+
+NOTE: There were 5 observations read from the data set WORK.MMP2.
+NOTE: There were 4 observations read from the data set WORK.LONG.
+NOTE: The data set WORK.MMP3 has 5 observations and 5 variables.
+NOTE: DATA elapsed:
+  wall  0.00 seconds
+  cpu   0.00 seconds
+193
+194        proc freq data=mmp3;
+195        table suppressed_long;
+196        run;
+NOTE: PROC FREQ
+NOTE: PROC FREQ statement used.
